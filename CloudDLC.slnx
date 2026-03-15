@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="CloudDLC.vcxproj" Id="4a5d9c4a-b6a7-46b9-b33d-94d2e5552d0f" />
+</Solution>
