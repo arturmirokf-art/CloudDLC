@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Genesis 3D Cloud Animation</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #060709;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <style>
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+        .btn {
+            padding: 12px 20px;
+            background: rgba(170, 210, 255, 0.15);
+            border: 1px solid rgba(170, 210, 255, 0.3);
+            color: #fff;
+            cursor: pointer;
+            border-radius: 8px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            width: 200px;
+            text-align: center;
+        }
+        .btn:hover {
+            background: rgba(170, 210, 255, 0.3);
+            transform: translateX(-5px);
+            border-color: rgba(170, 210, 255, 0.6);
+        }
+        .btn.active {
+            background: rgba(255, 80, 80, 0.3);
+            border-color: rgba(255, 80, 80, 0.5);
+        }
+
+        #infoBox {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #eee;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            max-width: 280px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+        }
+        #infoBox b { color: #5865F2; } /* Discord Blurple */
+    </style>
+
+    <div id="infoBox">
+        <b>Discord Developer Portal:</b><br><br>
+        • Используйте <b>GIF</b> для анимации в RPC.<br>
+        • <b>WEBP/PNG</b> здесь — только статика.<br>
+        • В коде RPC укажите <u>имя ассета</u>, который вы загрузили в портал.
+    </div>
+
+    <div id="controls">
+        <button id="png1024" class="btn">Скачать PNG (Статика)</button>
+        <button id="webp1024" class="btn">Скачать WEBP (Статика)</button>
+        <button id="gif1024" class="btn">Скачать GIF (Анимация 1024x1024)</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gifshot@0.4.5/dist/gifshot.min.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+        const particleCount = 1400; 
+        let virtualTime = 0;
+        let lastRealTime = Date.now();
+        let phase = 0; 
+        let lastRotation = 0;
+
+        let isGifRecording = false;
+        let gifFrames = [];
+        let gifLastFrame = 0;
+
+        const pngBtn = document.getElementById('png1024');
+        const webpBtn = document.getElementById('webp1024');
+        const gifBtn = document.getElementById('gif1024');
+
+        function captureSquare(targetSize = 1024, type = 'image/png') {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = targetSize;
+            offscreen.height = targetSize;
+            const octx = offscreen.getContext('2d');
+            const side = Math.min(width, height);
+            octx.drawImage(canvas, (width - side) / 2, (height - side) / 2, side, side, 0, 0, targetSize, targetSize);
+            return offscreen.toDataURL(type);
+        }
+
+        pngBtn.onclick = () => {
+            const link = document.createElement('a');
+            link.download = 'discord_static.png';
+            link.href = captureSquare(1024, 'image/png');
+            link.click();
+        };
+
+        webpBtn.onclick = () => {
+            const link = document.createElement('a');
+            link.download = 'discord_static.webp';
+            link.href = captureSquare(1024, 'image/webp');
+            link.click();
+        };
+
+        gifBtn.onclick = () => {
+            if (isGifRecording) return;
+            isGifRecording = true;
+            gifFrames = [];
+            gifLastFrame = 0;
+            virtualTime = 0; 
+            phase = 0;
+            gifBtn.classList.add('active');
+            gifBtn.innerText = 'Запись (20 кадров)...';
+        };
+
+        function finalizeGif() {
+            gifBtn.innerText = 'Сборка анимации...';
+            gifshot.createGIF({
+                images: gifFrames,
+                gifWidth: 1024,
+                gifHeight: 1024,
+                interval: 0.15,
+                numWorkers: 2,
+                quality: 20
+            }, function (obj) {
+                if (!obj.error) {
+                    const link = document.createElement('a');
+                    link.href = obj.image;
+                    link.download = 'discord_animated.gif';
+                    link.click();
+                }
+                isGifRecording = false;
+                gifBtn.classList.remove('active');
+                gifBtn.innerText = 'Скачать GIF (Анимация 1024x1024)';
+                gifFrames = [];
+            });
+        }
+        
+        const cloudPath = new Path2D("M30,70 L70,70 C85,70 90,60 85,50 C95,45 95,30 80,25 C75,10 55,10 45,25 C30,20 20,35 30,50 C20,60 25,70 30,70 Z");
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            particles = [];
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = 110;
+            tempCanvas.height = 90;
+            tempCtx.fill(cloudPath);
+            const imgData = tempCtx.getImageData(0, 0, 110, 90).data;
+            const points = [];
+            for (let y = 0; y < 90; y++) {
+                for (let x = 0; x < 110; x++) {
+                    if (imgData[(y * 110 + x) * 4 + 3] > 128) {
+                        points.push({ x: (x - 55) * 3.5, y: (y - 45) * 3.5 });
+                    }
+                }
+            }
+
+            for (let i = 0; i < particleCount; i++) {
+                const targetPoint = points[i % points.length];
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 1000 + 600;
+                
+                particles.push({
+                    x: Math.cos(angle) * dist,
+                    y: Math.sin(angle) * dist,
+                    z: (Math.random() - 0.5) * 1500,
+                    tx: targetPoint.x,
+                    ty: targetPoint.y,
+                    tz: (Math.random() - 0.5) * 70,
+                    size: Math.random() * 1.5 + 0.5,
+                    color: `rgba(${170 + Math.random() * 85}, ${210 + Math.random() * 45}, 255,`
+                });
+            }
+        }
+
+        function rotateY(x, z, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return {
+                x: x * cos - z * sin,
+                z: x * sin + z * cos
+            };
+        }
+
+        function rotateX(y, z, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return {
+                y: y * cos - z * sin,
+                z: y * sin + z * cos
+            };
+        }
+
+        function draw() {
+            ctx.fillStyle = '#060709';
+            ctx.fillRect(0, 0, width, height);
+
+            const now = Date.now();
+            const delta = isGifRecording ? (1/60) : (now - lastRealTime) / 1000;
+            virtualTime += delta;
+            lastRealTime = now;
+
+            const elapsed = virtualTime;
+            const fov = 750;
+            const tiltX = 0.45;
+
+            let lerpFactor = 0;
+            let rotY = 0;
+
+            const appearSpeed = 0.8; 
+            const rotateSpeed = 1.3; 
+            const cycleCount = 3;    
+
+            if (phase === 0) { 
+                lerpFactor = Math.min(1, elapsed * appearSpeed);
+                if (lerpFactor >= 1) phase = 1;
+            } else if (phase === 1) { 
+                lerpFactor = 1;
+                rotY = -(elapsed - 1 / appearSpeed) * rotateSpeed;
+                if (Math.abs(rotY) >= Math.PI * 2 * cycleCount) {
+                    phase = 2;
+                    lastRotation = rotY;
+                }
+            } else if (phase === 2) { 
+                rotY = lastRotation;
+                const phase2Elapsed = (elapsed - (1 / appearSpeed + (Math.PI * 2 * cycleCount) / rotateSpeed));
+                lerpFactor = Math.max(0, 1 - phase2Elapsed * appearSpeed);
+                if (lerpFactor <= 0) {
+                    if (isGifRecording) {
+                        finalizeGif();
+                    }
+                    virtualTime = 0;
+                    phase = 0;
+                }
+            }
+
+            if (isGifRecording && gifFrames.length < 20) { 
+                if (virtualTime - gifLastFrame >= 0.15) { 
+                    gifFrames.push(captureSquare(1024));
+                    gifLastFrame = virtualTime;
+                    gifBtn.innerText = `Запись: ${gifFrames.length} / 20`;
+                }
+            }
+
+            const projected = particles.map(p => {
+                let target = rotateY(p.tx, p.tz, rotY);
+                let p3d_target = { x: target.x, y: p.ty, z: target.z };
+                p3d_target = rotateX(p3d_target.y, p3d_target.z, tiltX);
+                const finalTarget = { x: target.x, y: p3d_target.y, z: p3d_target.z };
+
+                const curX = p.x + (finalTarget.x - p.x) * lerpFactor;
+                const curY = p.y + (finalTarget.y - p.y) * lerpFactor;
+                const curZ = p.z + (finalTarget.z - p.z) * lerpFactor;
+
+                const scale = fov / (fov + curZ);
+                return {
+                    x: curX * scale + width / 2,
+                    y: curY * scale + height / 2,
+                    z: curZ,
+                    size: p.size * scale,
+                    color: p.color
+                };
+            });
+
+            projected.sort((a, b) => b.z - a.z);
+
+            projected.forEach(p => {
+                const alpha = Math.max(0, Math.min(0.85, (fov - p.z) / (fov * 1.5))) * (phase === 2 ? lerpFactor : 1);
+                if (alpha <= 0) return;
+                ctx.fillStyle = `${p.color} ${alpha})`;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            });
+
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('resize', init);
+        init();
+        draw();
+    </script>
+</body>
+</html>
